@@ -42,6 +42,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 });
   }
 
-  console.log('🎉 Webhook válido!', jsonBody);
+  console.log('Webhook válido!', jsonBody);
   return NextResponse.json({ status: 'ok' });
 }

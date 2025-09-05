@@ -2,53 +2,46 @@ import { NextRequest, NextResponse } from 'next/server';
 import crypto from 'crypto';
 
 export async function POST(req: NextRequest) {
-    const secret = process.env.MP_SIGNATURE_SECRET;
+  const secret = process.env.MP_SIGNATURE_SECRET!;
+  const rawBody = await req.text();
 
-    if (!secret) {
-        console.error('Assinatura secreta não configurada');
-        return NextResponse.json({ error: 'Configuração ausente' }, { status: 500 });
-    }
+  const headers = req.headers;
+  const signatureHeader = headers.get('x-signature') || '';
+  const requestId = headers.get('x-request-id') || '';
 
-    const rawBody = await req.text();
-    const signatureHeader = req.headers.get('x-signature');
+  const sigMap: Record<string, string> = {};
+  signatureHeader.split(',').forEach(part => {
+    const [k, v] = part.split('=');
+    if (k && v) sigMap[k.trim()] = v.trim();
+  });
 
-    if (!signatureHeader) {
-        console.warn('Assinatura ausente no cabeçalho');
-        return NextResponse.json({ error: 'Assinatura ausente' }, { status: 401 });
-    }
+  const ts = sigMap.ts;
+  const receivedSignature = sigMap.v1;
 
-    const signatureParts = signatureHeader.split(',');
-    const signatureMap: Record<string, string> = {};
+  if (!ts || !receivedSignature) {
+    console.warn('Assinatura malformada:', signatureHeader);
+    return NextResponse.json({ error: 'Assinatura malformada' }, { status: 401 });
+  }
 
-    for (const part of signatureParts) {
-        const [key, value] = part.split('=');
-        signatureMap[key.trim()] = value.trim();
-    }
+  const jsonBody = JSON.parse(rawBody);
+  const id = (jsonBody.data?.id || '').toString().toLowerCase();
 
-    const receivedSignature = signatureMap['v1'];
-    const timestamp = signatureMap['ts'];
+  const manifest = `id:${id};request-id:${requestId};ts:${ts};`;
 
-    if (!receivedSignature || !timestamp) {
-        console.warn('Formato da assinatura inválido');
-        return NextResponse.json({ error: 'Assinatura malformada' }, { status: 401 });
-    }
+  const expectedSignature = crypto
+    .createHmac('sha256', secret)
+    .update(manifest)
+    .digest('hex');
 
-    const expectedSignature = crypto
-        .createHmac('sha256', secret)
-        .update(rawBody)
-        .digest('hex');
-    
-    if (expectedSignature !== receivedSignature) {
-        console.warn('Assinatura inválida!');
-        console.log('Esperada:', expectedSignature);
-        console.log('Recebida:', receivedSignature);
-        return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 });
-    }
+  console.log('Raw body:', rawBody);
+  console.log('Manifest:', manifest);
+  console.log('Esperada:', expectedSignature);
+  console.log('Recebida:', receivedSignature);
 
-    const body = JSON.parse(rawBody);
-    console.log('Webhook recebido com sucesso!');
-    console.log('Tipo:', body.type);
-    console.log('Dados:', body.data);
+  if (expectedSignature !== receivedSignature) {
+    return NextResponse.json({ error: 'Assinatura inválida' }, { status: 401 });
+  }
 
-    return NextResponse.json({ status: 'ok' });
+  console.log('🎉 Webhook válido!', jsonBody);
+  return NextResponse.json({ status: 'ok' });
 }

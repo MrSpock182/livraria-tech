@@ -1,28 +1,32 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server';
 
-export async function GET(_: Request, { params }: { params: { id: string } }) {
-  const paymentId = params.id
-  const accessToken = process.env.MP_AUTH
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  const { id } = await context.params;
+
+  const accessToken = process.env.MP_AUTH;
+
+  if (!accessToken) {
+    return NextResponse.json({ error: 'Token não configurado' }, { status: 500 });
+  }
 
   try {
-    const res = await fetch(`https://api.mercadopago.com/v1/payments/${paymentId}`, {
+    const res = await fetch(`https://api.mercadopago.com/v1/payments/${id}`, {
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
-    })
+    });
 
     if (!res.ok) {
-      const error = await res.json()
-      console.error('Erro ao consultar pagamento:', error)
-      return NextResponse.json({ status: 'erro', error }, { status: res.status })
+      return NextResponse.json({ error: 'Erro ao consultar pagamento' }, { status: res.status });
     }
 
-    const data = await res.json()
-    const status = data.status
+    const data = await res.json();
 
-    return NextResponse.json({ status })
-  } catch (err) {
-    console.error('Erro inesperado:', err)
-    return NextResponse.json({ status: 'erro', error: 'Falha interna' }, { status: 500 })
+    return NextResponse.json({ status: data.status });
+  } catch (error) {
+    return NextResponse.json({ error: 'Erro interno' }, { status: 500 });
   }
 }

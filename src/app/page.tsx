@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
 export default function Home() {
   const [email, setEmail] = useState('');
   const [qrCode, setQrCode] = useState('');
   const [qrCodeBase, setQrCodeBase] = useState('');
+  const [paymentConfirmed, setPaymentConfirmed] = useState(false);
+  const [paymentId, setPaymentId] = useState<string | null>(null);
 
   const handleCompra = async () => {
     try {
@@ -20,6 +22,9 @@ export default function Home() {
       if (res.ok) {
         setQrCode(data.point_of_interaction.transaction_data.qr_code);
         setQrCodeBase(data.point_of_interaction.transaction_data.qr_code_base64);
+
+        setPaymentId(data.id || null);
+        setPaymentConfirmed(false); 
       } else {
         console.error('Erro na API:', data);
         alert('Erro ao criar pagamento!');
@@ -28,6 +33,26 @@ export default function Home() {
       console.error('Erro na requisição:', err);
     }
   };
+
+  useEffect(() => {
+    if (!paymentId || paymentConfirmed) return;
+    const checkPaymentStatus = async () => {
+      try {
+        const res = await fetch(`/api/status/${paymentId}`);
+        const data = await res.json();
+
+        if (res.ok && data.status === 'approved') {
+          setPaymentConfirmed(true);
+        }
+      } catch (err) {
+        console.error('Erro ao verificar status do pagamento:', err);
+      }
+    };
+
+    checkPaymentStatus();
+    const interval = setInterval(checkPaymentStatus, 5000);
+    return () => clearInterval(interval);
+  }, [paymentId, paymentConfirmed]);
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-start pt-12 bg-black text-white">
@@ -68,6 +93,18 @@ export default function Home() {
               onClick={(e) => (e.target as HTMLTextAreaElement).select()}
             />
           </div>
+
+          <button
+            disabled={!paymentConfirmed}
+            className={`mt-4 px-4 py-2 rounded shadow ${
+              paymentConfirmed
+                ? 'bg-green-600 hover:bg-green-700 text-white'
+                : 'bg-gray-600 text-gray-400 cursor-not-allowed'
+            }`}
+            onClick={() => window.location.href = '/colabe'}
+          >
+            {paymentConfirmed ? 'Continuar' : 'Aguardando pagamento...'}
+          </button>
         </div>
       )}
     </div>
